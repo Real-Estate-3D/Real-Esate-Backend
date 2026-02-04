@@ -1,36 +1,32 @@
 // File: src/routes/index.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
 // Import route modules
-const authRoutes = require('./auth.routes');
-const userRoutes = require('./user.routes');
-const legislationRoutes = require('./legislation.routes');
-const zoningLawRoutes = require('./zoningLaw.routes');
-const policyRoutes = require('./policy.routes');
-const changeHistoryRoutes = require('./changeHistory.routes');
-const branchRoutes = require('./branch.routes');
+const authRoutes = require("./auth.routes");
+const userRoutes = require("./user.routes");
+const legislationRoutes = require("./legislation.routes");
+const zoningLawRoutes = require("./zoningLaw.routes");
+const policyRoutes = require("./policy.routes");
+const changeHistoryRoutes = require("./changeHistory.routes");
+const branchRoutes = require("./branch.routes");
 // const gisLayerRoutes = require('./gisLayer.routes'); // TODO: Implement controller
-const gisScheduleRoutes = require('./gisSchedule.routes');
-const workflowRoutes = require('./workflow.routes');
+const gisScheduleRoutes = require("./gisSchedule.routes");
+const workflowRoutes = require("./workflow.routes");
 // const boundaryRoutes = require('./boundary.routes'); // TODO: Implement controller
 // const parcelRoutes = require('./parcel.routes'); // TODO: Implement controller
 
 // API version prefix
-const API_PREFIX = '/api/v1';
+const API_PREFIX = "/api/v1";
 
 // Health check
-router.get('/health', (req, res) => {
+router.get("/", (req, res) => {
   res.json({
-    status: 'ok',
+    status: "ok",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
 });
-
-
-
-
 
 // Mount routes
 router.use(`${API_PREFIX}/auth`, authRoutes);
