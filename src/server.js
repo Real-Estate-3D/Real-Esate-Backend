@@ -172,7 +172,7 @@ const startServer = async () => {
     }
 
     // Start server
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`✓ Server running on port ${PORT} in ${config.nodeEnv} mode`);
       console.log(`✓ API available at http://localhost:${PORT}/api/v1`);
       console.log(`✓ Health check at http://localhost:${PORT}/`);
