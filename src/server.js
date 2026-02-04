@@ -13,7 +13,7 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
-app.use(cors(config.cors));
+app.use(cors());
 
 // Rate limiting
 const limiter = rateLimit({
