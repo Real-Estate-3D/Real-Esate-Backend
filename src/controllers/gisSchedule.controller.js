@@ -5,6 +5,7 @@ const { ApiError } = require('../middleware/errorHandler');
 const { Op } = require('sequelize');
 const path = require('path');
 const fs = require('fs').promises;
+const { extractGeometry, validateGeometryWithinJurisdiction } = require('../utils/jurisdictionValidation');
 
 /**
  * Get all GIS schedules
@@ -95,8 +96,25 @@ exports.getById = asyncHandler(async (req, res) => {
  * Create new GIS schedule
  */
 exports.create = asyncHandler(async (req, res) => {
+  const normalizedGeometry = extractGeometry(req.body?.geometry);
+  if (normalizedGeometry) {
+    if (!req.user?.jurisdiction) {
+      throw new ApiError(422, 'User jurisdiction is required before saving polygon geometry');
+    }
+
+    const validation = await validateGeometryWithinJurisdiction({
+      geometry: normalizedGeometry,
+      jurisdictionName: req.user.jurisdiction,
+    });
+
+    if (!validation.valid) {
+      throw new ApiError(422, validation.reason || 'Polygon is outside assigned jurisdiction');
+    }
+  }
+
   const scheduleData = {
     ...req.body,
+    ...(normalizedGeometry ? { geometry: normalizedGeometry } : {}),
     created_by: req.user.id,
   };
 
@@ -119,7 +137,25 @@ exports.update = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'GIS schedule not found');
   }
 
-  await schedule.update(req.body);
+  const updates = { ...req.body };
+  const normalizedGeometry = extractGeometry(req.body?.geometry);
+  if (normalizedGeometry) {
+    if (!req.user?.jurisdiction) {
+      throw new ApiError(422, 'User jurisdiction is required before saving polygon geometry');
+    }
+
+    const validation = await validateGeometryWithinJurisdiction({
+      geometry: normalizedGeometry,
+      jurisdictionName: req.user.jurisdiction,
+    });
+
+    if (!validation.valid) {
+      throw new ApiError(422, validation.reason || 'Polygon is outside assigned jurisdiction');
+    }
+    updates.geometry = normalizedGeometry;
+  }
+
+  await schedule.update(updates);
 
   res.json({
     success: true,

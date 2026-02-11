@@ -13,7 +13,7 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors(config.cors));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -112,6 +112,7 @@ const REQUIRED_SCHEMAS = [
   "landuse",
   "legislation",
   "users",
+  "organization",
 ];
 
 const createSchemas = async () => {
@@ -147,35 +148,14 @@ const enablePostgis = async () => {
 
 const startServer = async () => {
   try {
-    // Test database connection
     await sequelize.authenticate();
     console.log("✓ Database connection established successfully");
 
-    // Ensure PostGIS is available before syncing models that use GEOMETRY.
-    await enablePostgis();
-
-    // Create required schemas before syncing
-    await createSchemas();
-
-    // Sync database (in development only, use migrations in production)
-    if (config.nodeEnv === "development") {
-      const forceSync = process.env.DB_SYNC_FORCE === "true";
-      const alterSync = process.env.DB_SYNC_ALTER !== "false";
-
-      // Default is: alter without dropping columns (safer during active dev).
-      // Set DB_SYNC_FORCE=true for a full rebuild, DB_SYNC_ALTER=false to skip altering.
-      await sequelize.sync({
-        alter: alterSync ? { drop: false } : false,
-        force: forceSync,
-      });
-      console.log("✓ Database synchronized");
-    }
-
-    // Start server
-    app.listen(PORT, "0.0.0.0", () => {
+    app.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT} in ${config.nodeEnv} mode`);
       console.log(`✓ API available at http://localhost:${PORT}/api/v1`);
       console.log(`✓ Health check at http://localhost:${PORT}/`);
+      console.log("ℹ Run 'npm run migrate' to sync database schema");
     });
   } catch (error) {
     console.error("✗ Unable to start server:", error);

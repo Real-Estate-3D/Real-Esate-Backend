@@ -1,26 +1,8 @@
-{
-  "development": {
-    "username": "postgres",
-    "password": "postgres",
-    "database": "municipal_gis",
-    "host": "localhost",
-    "dialect": "postgres"
-  },
-  "test": {
-    "username": "postgres",
-    "password": "postgres",
-    "database": "municipal_gis_test",
-    "host": "localhost",
-    "dialect": "postgres"
-  },
-  "production": {
-    "use_env_variable": "DATABASE_URL",
-    "dialect": "postgres",
-    "dialectOptions": {
-      "ssl": {
-        "require": true,
-        "rejectUnauthorized": false
-      }
-    }
-  }
-}
+const path = require('path');
+
+module.exports = {
+  config: path.resolve('src/config/database.js'),
+  'migrations-path': path.resolve('migrations'),
+  'seeders-path': path.resolve('seeders'),
+  'models-path': path.resolve('src/models'),
+};

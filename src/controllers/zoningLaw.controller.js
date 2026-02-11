@@ -1,6 +1,7 @@
 // ZoningLaw Controller - CRUD operations for zoning laws
 const { ZoningLaw, ChangeHistory, GISSchedule } = require('../models');
 const { Op } = require('sequelize');
+const { extractGeometry, validateGeometryWithinJurisdiction } = require('../utils/jurisdictionValidation');
 
 const zoningLawController = {
   // GET /api/v1/zoning-laws - Get all zoning laws with filtering and pagination
@@ -152,6 +153,29 @@ const zoningLawController = {
         legislation_id
       } = req.body;
 
+      const normalizedGeometry = extractGeometry(geometry);
+      if (normalizedGeometry) {
+        if (!req.user?.jurisdiction) {
+          return res.status(422).json({
+            success: false,
+            message: 'User jurisdiction is required before saving polygon geometry',
+          });
+        }
+
+        const validation = await validateGeometryWithinJurisdiction({
+          geometry: normalizedGeometry,
+          jurisdictionName: req.user.jurisdiction,
+        });
+
+        if (!validation.valid) {
+          return res.status(422).json({
+            success: false,
+            message: validation.reason,
+            validation,
+          });
+        }
+      }
+
       const zoningLaw = await ZoningLaw.create({
         title,
         number,
@@ -165,7 +189,7 @@ const zoningLawController = {
         description,
         full_text,
         parameters,
-        geometry,
+        geometry: normalizedGeometry || geometry,
         municipality,
         jurisdiction,
         legislation_id,
@@ -205,6 +229,30 @@ const zoningLawController = {
     try {
       const { id } = req.params;
       const updates = req.body;
+
+      const normalizedGeometry = extractGeometry(updates.geometry);
+      if (normalizedGeometry) {
+        if (!req.user?.jurisdiction) {
+          return res.status(422).json({
+            success: false,
+            message: 'User jurisdiction is required before saving polygon geometry',
+          });
+        }
+
+        const validation = await validateGeometryWithinJurisdiction({
+          geometry: normalizedGeometry,
+          jurisdictionName: req.user.jurisdiction,
+        });
+
+        if (!validation.valid) {
+          return res.status(422).json({
+            success: false,
+            message: validation.reason,
+            validation,
+          });
+        }
+        updates.geometry = normalizedGeometry;
+      }
 
       const zoningLaw = await ZoningLaw.findByPk(id);
       if (!zoningLaw) {

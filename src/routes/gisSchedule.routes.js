@@ -2,24 +2,25 @@
 const express = require('express');
 const router = express.Router();
 const gisScheduleController = require('../controllers/gisSchedule.controller');
-const { authenticate, authorize } = require('../middleware/auth');
-const { devAuthBypass } = require('../middleware/devAuth');
+const { authenticate } = require('../middleware/auth');
+const { requireToolPermission } = require('../middleware/toolPermissions');
 const { uploadGISFile } = require('../middleware/upload');
-const config = require('../config');
 
-// Protected routes - use dev bypass in development
-router.use(config.nodeEnv === 'development' ? devAuthBypass : authenticate);
+const canViewLegislation = requireToolPermission('legislation', 'view');
+const canEditLegislation = requireToolPermission('legislation', 'edit');
+
+router.use(authenticate);
 
 // CRUD operations
-router.get('/', gisScheduleController.getAll);
-router.post('/', gisScheduleController.create);
-router.get('/types', gisScheduleController.getScheduleTypes);
-router.get('/by-legislation/:legislationId', gisScheduleController.getByLegislation);
-router.get('/:id', gisScheduleController.getById);
-router.put('/:id', gisScheduleController.update);
-router.delete('/:id', gisScheduleController.delete);
+router.get('/', canViewLegislation, gisScheduleController.getAll);
+router.post('/', canEditLegislation, gisScheduleController.create);
+router.get('/types', canViewLegislation, gisScheduleController.getScheduleTypes);
+router.get('/by-legislation/:legislationId', canViewLegislation, gisScheduleController.getByLegislation);
+router.get('/:id', canViewLegislation, gisScheduleController.getById);
+router.put('/:id', canEditLegislation, gisScheduleController.update);
+router.delete('/:id', canEditLegislation, gisScheduleController.delete);
 
 // File upload
-router.post('/upload', uploadGISFile.single('file'), gisScheduleController.uploadFile);
+router.post('/upload', canEditLegislation, uploadGISFile.single('file'), gisScheduleController.uploadFile);
 
 module.exports = router;

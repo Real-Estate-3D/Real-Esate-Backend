@@ -1,4 +1,3 @@
-// File: src/routes/index.js
 const express = require("express");
 const router = express.Router();
 
@@ -13,7 +12,9 @@ const branchRoutes = require("./branch.routes");
 // const gisLayerRoutes = require('./gisLayer.routes'); // TODO: Implement controller
 const gisScheduleRoutes = require("./gisSchedule.routes");
 const workflowRoutes = require("./workflow.routes");
-// const boundaryRoutes = require('./boundary.routes'); // TODO: Implement controller
+const approvalRoutes = require("./approval.routes");
+const organizationRoutes = require("./organization.routes");
+const boundaryRoutes = require("./boundary.routes");
 // const parcelRoutes = require('./parcel.routes'); // TODO: Implement controller
 
 // API version prefix
@@ -39,7 +40,9 @@ router.use(`${API_PREFIX}/change-history`, changeHistoryRoutes);
 // router.use(`${API_PREFIX}/gis-layers`, gisLayerRoutes); // TODO: Implement controller
 router.use(`${API_PREFIX}/gis-schedules`, gisScheduleRoutes);
 router.use(`${API_PREFIX}/workflows`, workflowRoutes);
-// router.use(`${API_PREFIX}/boundaries`, boundaryRoutes); // TODO: Implement controller
+router.use(`${API_PREFIX}/approvals`, approvalRoutes);
+router.use(`${API_PREFIX}/organizations`, organizationRoutes);
+router.use(`${API_PREFIX}/boundaries`, boundaryRoutes);
 // router.use(`${API_PREFIX}/parcels`, parcelRoutes); // TODO: Implement controller
 
 module.exports = router;

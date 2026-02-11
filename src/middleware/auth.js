@@ -40,7 +40,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive) {
+    if (user.is_active === false) {
       return res.status(403).json({
         success: false,
         message: 'Account is inactive',
@@ -151,7 +151,7 @@ const optionalAuth = async (req, res, next) => {
       attributes: { exclude: ['password'] },
     });
 
-    if (user && user.isActive) {
+    if (user && user.is_active !== false) {
       req.user = user;
     }
 

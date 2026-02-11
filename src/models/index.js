@@ -66,6 +66,19 @@ db.User = require("./user/User")(sequelize);
 db.Role = require("./user/Role")(sequelize);
 db.UserRole = require("./user/UserRole")(sequelize);
 
+// Organization models
+db.Organization = require("./organization/Organization")(sequelize);
+db.OrganizationMember = require("./organization/OrganizationMember")(sequelize);
+db.Department = require("./organization/Department")(sequelize);
+db.Team = require("./organization/Team")(sequelize);
+db.TeamMember = require("./organization/TeamMember")(sequelize);
+db.Position = require("./organization/Position")(sequelize);
+db.OrgRole = require("./organization/OrgRole")(sequelize);
+db.Invitation = require("./organization/Invitation")(sequelize);
+db.OrgChartNodeState = require("./organization/OrgChartNodeState")(sequelize);
+db.OrgAuditLog = require("./organization/OrgAuditLog")(sequelize);
+db.ImportJob = require("./organization/ImportJob")(sequelize);
+
 db.ChangeHistory = require("./legislation/ChangeHistory")(sequelize);
 
 // Define associations
@@ -218,6 +231,210 @@ db.LegislationVersion.belongsTo(db.User, {
 db.LegislationBranch.belongsTo(db.User, {
   foreignKey: "created_by",
   as: "creator",
+});
+
+// Organization associations
+db.Organization.hasMany(db.OrganizationMember, {
+  foreignKey: "organization_id",
+  as: "members",
+});
+db.OrganizationMember.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.Department, {
+  foreignKey: "organization_id",
+  as: "departments",
+});
+db.Department.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.Team, { foreignKey: "organization_id", as: "teams" });
+db.Team.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.Position, {
+  foreignKey: "organization_id",
+  as: "positions",
+});
+db.Position.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.OrgRole, {
+  foreignKey: "organization_id",
+  as: "orgRoles",
+});
+db.OrgRole.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.Invitation, {
+  foreignKey: "organization_id",
+  as: "invitations",
+});
+db.Invitation.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.OrgAuditLog, {
+  foreignKey: "organization_id",
+  as: "auditLogs",
+});
+db.OrgAuditLog.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.ImportJob, {
+  foreignKey: "organization_id",
+  as: "importJobs",
+});
+db.ImportJob.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.Organization.hasMany(db.OrgChartNodeState, {
+  foreignKey: "organization_id",
+  as: "nodeStates",
+});
+db.OrgChartNodeState.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+
+db.User.hasMany(db.OrganizationMember, {
+  foreignKey: "user_id",
+  as: "organizationMemberships",
+});
+db.OrganizationMember.belongsTo(db.User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
+db.Department.hasMany(db.OrganizationMember, {
+  foreignKey: "department_id",
+  as: "members",
+});
+db.OrganizationMember.belongsTo(db.Department, {
+  foreignKey: "department_id",
+  as: "department",
+});
+
+db.Team.hasMany(db.OrganizationMember, {
+  foreignKey: "team_id",
+  as: "members",
+});
+db.OrganizationMember.belongsTo(db.Team, {
+  foreignKey: "team_id",
+  as: "team",
+});
+
+db.Position.hasMany(db.OrganizationMember, {
+  foreignKey: "position_id",
+  as: "members",
+});
+db.OrganizationMember.belongsTo(db.Position, {
+  foreignKey: "position_id",
+  as: "position",
+});
+
+db.OrgRole.hasMany(db.OrganizationMember, {
+  foreignKey: "org_role_id",
+  as: "members",
+});
+db.OrganizationMember.belongsTo(db.OrgRole, {
+  foreignKey: "org_role_id",
+  as: "orgRole",
+});
+
+db.Department.belongsTo(db.OrganizationMember, {
+  foreignKey: "head_member_id",
+  as: "headMember",
+});
+db.OrganizationMember.hasMany(db.Department, {
+  foreignKey: "head_member_id",
+  as: "headedDepartments",
+});
+
+db.Team.belongsTo(db.OrganizationMember, {
+  foreignKey: "lead_member_id",
+  as: "leadMember",
+});
+db.OrganizationMember.hasMany(db.Team, {
+  foreignKey: "lead_member_id",
+  as: "ledTeams",
+});
+
+db.Department.belongsTo(db.Department, {
+  foreignKey: "parent_department_id",
+  as: "parentDepartment",
+});
+db.Department.hasMany(db.Department, {
+  foreignKey: "parent_department_id",
+  as: "childDepartments",
+});
+
+db.Team.belongsTo(db.Department, {
+  foreignKey: "department_id",
+  as: "department",
+});
+db.Department.hasMany(db.Team, {
+  foreignKey: "department_id",
+  as: "teams",
+});
+
+db.OrganizationMember.belongsTo(db.OrganizationMember, {
+  foreignKey: "reports_to_member_id",
+  as: "manager",
+});
+db.OrganizationMember.hasMany(db.OrganizationMember, {
+  foreignKey: "reports_to_member_id",
+  as: "directReports",
+});
+
+db.Team.belongsToMany(db.OrganizationMember, {
+  through: db.TeamMember,
+  foreignKey: "team_id",
+  otherKey: "organization_member_id",
+  as: "teamMembers",
+});
+db.OrganizationMember.belongsToMany(db.Team, {
+  through: db.TeamMember,
+  foreignKey: "organization_member_id",
+  otherKey: "team_id",
+  as: "memberTeams",
+});
+
+db.TeamMember.belongsTo(db.Organization, {
+  foreignKey: "organization_id",
+  as: "organization",
+});
+db.TeamMember.belongsTo(db.Team, {
+  foreignKey: "team_id",
+  as: "team",
+});
+db.TeamMember.belongsTo(db.OrganizationMember, {
+  foreignKey: "organization_member_id",
+  as: "organizationMember",
+});
+
+db.OrgChartNodeState.belongsTo(db.OrganizationMember, {
+  foreignKey: "organization_member_id",
+  as: "member",
+});
+db.OrganizationMember.hasOne(db.OrgChartNodeState, {
+  foreignKey: "organization_member_id",
+  as: "nodeState",
 });
 
 db.sequelize = sequelize;

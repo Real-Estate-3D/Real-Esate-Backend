@@ -26,5 +26,6 @@ router.post('/find-by-bbox', boundaryController.findByBbox);
 
 // Search
 router.get('/search', boundaryController.search);
+router.post('/validate-polygon', authenticate, boundaryController.validatePolygon);
 
 module.exports = router;
