@@ -3,6 +3,8 @@ const {
   Department,
   OrganizationMember,
   Team,
+  Position,
+  OrgRole,
   User,
   OrgAuditLog,
   sequelize,
@@ -209,6 +211,8 @@ const departmentController = {
         include: [
           { model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'display_name', 'email', 'is_active'] },
           { model: Team, as: 'team', attributes: ['id', 'name'] },
+          { model: Position, as: 'position', attributes: ['id', 'name'] },
+          { model: OrgRole, as: 'orgRole', attributes: ['id', 'name'] },
         ],
       });
 
@@ -337,12 +341,28 @@ const departmentController = {
   async getDepartmentChangeHistory(req, res) {
     try {
       const { page, limit, offset } = getPagination(req.query, 20, 200);
+      const search = String(req.query.search || '').trim();
+      const action = String(req.query.action || '').trim();
+      const where = {
+        organization_id: req.organizationId,
+        department_id: req.params.departmentId,
+      };
+
+      if (action && action !== 'all') {
+        where.action = action;
+      }
+
+      if (search) {
+        where[Op.or] = [
+          { message: { [Op.iLike]: `%${search}%` } },
+          { action: { [Op.iLike]: `%${search}%` } },
+          { actor_name: { [Op.iLike]: `%${search}%` } },
+          { entity_type: { [Op.iLike]: `%${search}%` } },
+        ];
+      }
 
       const { rows, count } = await OrgAuditLog.findAndCountAll({
-        where: {
-          organization_id: req.organizationId,
-          department_id: req.params.departmentId,
-        },
+        where,
         order: [['created_at', 'DESC']],
         offset,
         limit,

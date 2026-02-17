@@ -1,4 +1,5 @@
-const { OrgRole, Position } = require('../../models');
+const { Op } = require('sequelize');
+const { OrgRole, Position, OrganizationMember } = require('../../models');
 const { logOrgAudit } = require('../../utils/orgAudit');
 const { normalizePermissionMatrix } = require('../../utils/permissionMatrix');
 
@@ -322,6 +323,63 @@ const orgSettingsController = {
         return res.status(404).json({ success: false, message: 'Position not found' });
       }
 
+      const assignedMemberCount = await OrganizationMember.count({
+        where: {
+          organization_id: req.organizationId,
+          position_id: position.id,
+          status: {
+            [Op.ne]: 'deactivated',
+          },
+        },
+      });
+
+      const reassignToPositionId = String(req.query.reassignTo || req.body?.reassignToPositionId || '').trim();
+
+      if (assignedMemberCount > 0 && !reassignToPositionId) {
+        return res.status(409).json({
+          success: false,
+          message: `Cannot delete ${position.name}. ${assignedMemberCount} member(s) are assigned to this position. Reassign them first.`,
+          data: {
+            assignedMemberCount,
+          },
+        });
+      }
+
+      if (assignedMemberCount > 0 && reassignToPositionId) {
+        if (reassignToPositionId === position.id) {
+          return res.status(400).json({
+            success: false,
+            message: 'Reassignment target position must be different from the deleted position',
+          });
+        }
+
+        const targetPosition = await Position.findOne({
+          where: {
+            id: reassignToPositionId,
+            organization_id: req.organizationId,
+          },
+        });
+        if (!targetPosition) {
+          return res.status(404).json({
+            success: false,
+            message: 'Reassignment target position not found',
+          });
+        }
+
+        await OrganizationMember.update(
+          { position_id: targetPosition.id },
+          {
+            where: {
+              organization_id: req.organizationId,
+              position_id: position.id,
+              status: {
+                [Op.ne]: 'deactivated',
+              },
+            },
+          }
+        );
+      }
+
       const previous = position.toJSON();
       await position.destroy();
 
@@ -337,6 +395,9 @@ const orgSettingsController = {
 
       res.json({
         success: true,
+        data: {
+          assignedMemberCount,
+        },
         message: 'Position deleted successfully',
       });
     } catch (error) {

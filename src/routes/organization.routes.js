@@ -41,6 +41,7 @@ router.post('/:organizationId/departments/:departmentId/teams', authorizeOrganiz
 
 // Teams
 router.get('/:organizationId/teams/:teamId', teamController.getTeamById);
+router.get('/:organizationId/teams/:teamId/change-history', teamController.getTeamChangeHistory);
 router.put('/:organizationId/teams/:teamId', authorizeOrganizationManager, teamController.updateTeam);
 router.delete('/:organizationId/teams/:teamId', authorizeOrganizationManager, teamController.deleteTeam);
 
@@ -48,6 +49,7 @@ router.delete('/:organizationId/teams/:teamId', authorizeOrganizationManager, te
 router.get('/:organizationId/members', memberController.getMembers);
 router.get('/:organizationId/members/:memberId', memberController.getMemberById);
 router.put('/:organizationId/members/:memberId', authorizeOrganizationManager, memberController.updateMember);
+router.patch('/:organizationId/members/:memberId/assignment', authorizeOrganizationManager, memberController.updateAssignment);
 router.post('/:organizationId/invitations/bulk', authorizeOrganizationManager, memberController.inviteBulk);
 router.post('/:organizationId/members/:memberId/change-team', authorizeOrganizationManager, memberController.changeTeam);
 router.post('/:organizationId/members/:memberId/change-position', authorizeOrganizationManager, memberController.changePosition);

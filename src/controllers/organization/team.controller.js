@@ -1,5 +1,7 @@
-const { Team, OrganizationMember, TeamMember, User } = require('../../models');
+const { Op } = require('sequelize');
+const { Team, OrganizationMember, TeamMember, User, OrgAuditLog } = require('../../models');
 const { logOrgAudit } = require('../../utils/orgAudit');
+const { getPagination } = require('./helpers');
 
 const teamController = {
   async getTeamById(req, res) {
@@ -67,13 +69,21 @@ const teamController = {
       await team.update(updates);
 
       if (Array.isArray(memberIds)) {
+        const existingTeamMembers = await TeamMember.findAll({
+          where: { team_id: team.id, organization_id: req.organizationId },
+          attributes: ['organization_member_id'],
+        });
+        const existingMemberIds = existingTeamMembers.map((item) => item.organization_member_id);
+        const nextMemberIds = memberIds.filter(Boolean);
+        const removedMemberIds = existingMemberIds.filter((memberId) => !nextMemberIds.includes(memberId));
+
         await TeamMember.destroy({
           where: { team_id: team.id, organization_id: req.organizationId },
         });
 
-        if (memberIds.length > 0) {
+        if (nextMemberIds.length > 0) {
           await TeamMember.bulkCreate(
-            memberIds.map((memberId) => ({
+            nextMemberIds.map((memberId) => ({
               organization_id: req.organizationId,
               team_id: team.id,
               organization_member_id: memberId,
@@ -85,11 +95,24 @@ const teamController = {
           { team_id: team.id },
           {
             where: {
-              id: memberIds,
+              id: nextMemberIds,
               organization_id: req.organizationId,
             },
           }
         );
+
+        if (removedMemberIds.length > 0) {
+          await OrganizationMember.update(
+            { team_id: null },
+            {
+              where: {
+                id: removedMemberIds,
+                organization_id: req.organizationId,
+                team_id: team.id,
+              },
+            }
+          );
+        }
       }
 
       await logOrgAudit({
@@ -166,7 +189,62 @@ const teamController = {
       });
     }
   },
+
+  async getTeamChangeHistory(req, res) {
+    try {
+      const team = await Team.findOne({
+        where: { id: req.params.teamId, organization_id: req.organizationId },
+      });
+      if (!team) {
+        return res.status(404).json({ success: false, message: 'Team not found' });
+      }
+
+      const { page, limit, offset } = getPagination(req.query, 20, 200);
+      const search = String(req.query.search || '').trim();
+      const action = String(req.query.action || '').trim();
+      const where = {
+        organization_id: req.organizationId,
+        entity_type: 'team',
+        entity_id: team.id,
+      };
+
+      if (action && action !== 'all') {
+        where.action = action;
+      }
+
+      if (search) {
+        where[Op.or] = [
+          { message: { [Op.iLike]: `%${search}%` } },
+          { action: { [Op.iLike]: `%${search}%` } },
+          { actor_name: { [Op.iLike]: `%${search}%` } },
+        ];
+      }
+
+      const { rows, count } = await OrgAuditLog.findAndCountAll({
+        where,
+        order: [['created_at', 'DESC']],
+        offset,
+        limit,
+      });
+
+      res.json({
+        success: true,
+        data: rows,
+        pagination: {
+          total: count,
+          page,
+          limit,
+          totalPages: Math.ceil(count / limit),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch team change history',
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = teamController;
-
