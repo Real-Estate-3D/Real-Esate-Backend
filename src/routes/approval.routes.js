@@ -8,6 +8,7 @@ const config = require('../config');
 router.use(config.nodeEnv === 'development' ? devAuthBypass : authenticate);
 
 router.get('/meta/reviewers', approvalController.getReviewers);
+router.post('/meta/reviewers', approvalController.createReviewer);
 router.get('/', approvalController.getAll);
 router.post('/', approvalController.create);
 router.get('/:id', approvalController.getById);

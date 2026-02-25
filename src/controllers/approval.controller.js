@@ -1,11 +1,11 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const { ApiError } = require('../middleware/errorHandler');
 
-const reviewers = [
-  { id: 'rv-001', name: 'John Doe', role: 'City Official' },
-  { id: 'rv-002', name: 'Jane Smith', role: 'Urban Planner' },
-  { id: 'rv-003', name: 'David Lee', role: 'GIS Specialist' },
-  { id: 'rv-004', name: 'Sofia Davis', role: 'Policy Reviewer' },
+const reviewersSeed = [
+  { id: 'rv-001', name: 'John Doe', role: 'City Official', email: 'john.doe@blueprint.gov' },
+  { id: 'rv-002', name: 'Jane Smith', role: 'Urban Planner', email: 'jane.smith@blueprint.gov' },
+  { id: 'rv-003', name: 'David Lee', role: 'GIS Specialist', email: 'david.lee@blueprint.gov' },
+  { id: 'rv-004', name: 'Sofia Davis', role: 'Policy Reviewer', email: 'sofia.davis@blueprint.gov' },
 ];
 
 const seedApprovals = [
@@ -124,6 +124,8 @@ const seedApprovals = [
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const nowIso = () => new Date().toISOString();
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const withDetails = (approval) => ({
   ...approval,
@@ -279,6 +281,7 @@ const withDetails = (approval) => ({
 });
 
 let approvals = seedApprovals.map(withDetails);
+let reviewers = clone(reviewersSeed);
 
 const findApproval = (id) => approvals.find((item) => item.id === id);
 
@@ -306,7 +309,41 @@ const filterApprovals = (items, query) => {
 exports.getReviewers = asyncHandler(async (req, res) => {
   res.json({
     success: true,
-    data: reviewers,
+    data: clone(reviewers),
+  });
+});
+
+exports.createReviewer = asyncHandler(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const role = String(req.body?.role || 'City Official').trim() || 'City Official';
+  const email = normalizeEmail(req.body?.email);
+
+  if (!name || !email) {
+    throw new ApiError(400, 'name and email are required');
+  }
+
+  if (!isValidEmail(email)) {
+    throw new ApiError(400, 'A valid email is required');
+  }
+
+  const existing = reviewers.find((item) => normalizeEmail(item.email) === email);
+  if (existing) {
+    throw new ApiError(409, 'Reviewer with this email already exists');
+  }
+
+  const reviewer = {
+    id: `rv-${Date.now()}`,
+    name,
+    role,
+    email,
+  };
+
+  reviewers = [reviewer, ...reviewers];
+
+  res.status(201).json({
+    success: true,
+    message: 'Reviewer added successfully',
+    data: reviewer,
   });
 });
 
@@ -563,4 +600,5 @@ exports.addComment = asyncHandler(async (req, res) => {
 
 exports._resetApprovals = () => {
   approvals = clone(seedApprovals.map(withDetails));
+  reviewers = clone(reviewersSeed);
 };

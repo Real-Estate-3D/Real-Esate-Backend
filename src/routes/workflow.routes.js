@@ -13,6 +13,12 @@ router.use(authenticate);
 // GET /api/v1/workflows - Get all workflows
 router.get('/', canViewLegislation, workflowController.getAll);
 
+// GET /api/v1/workflows/map - Map-mode workflow response
+router.get('/map', canViewLegislation, workflowController.getMap);
+
+// GET /api/v1/workflows/metadata - Workflow builder metadata
+router.get('/metadata', canViewLegislation, workflowController.getMetadata);
+
 // GET /api/v1/workflows/:id - Get single workflow
 router.get('/:id', canViewLegislation, workflowController.getById);
 

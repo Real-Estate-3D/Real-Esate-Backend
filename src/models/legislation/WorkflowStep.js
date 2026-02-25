@@ -40,6 +40,16 @@ module.exports = (sequelize) => {
       allowNull: true,
       comment: 'Role responsible for this step'
     },
+    required_documents: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: []
+    },
+    related_legislation: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: []
+    },
     workflow_id: {
       type: DataTypes.UUID,
       allowNull: false
