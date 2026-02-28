@@ -81,6 +81,11 @@ db.ImportJob = require("./organization/ImportJob")(sequelize);
 
 db.ChangeHistory = require("./legislation/ChangeHistory")(sequelize);
 
+// Approval models
+db.Approval = require("./approval/Approval")(sequelize);
+db.ApprovalComment = require("./approval/ApprovalComment")(sequelize);
+db.ApprovalHistory = require("./approval/ApprovalHistory")(sequelize);
+
 // Define associations
 // Boundary Tier Types
 db.UpperTier.belongsTo(db.BoundaryTierType, { foreignKey: "tier_type_id" });
@@ -435,6 +440,25 @@ db.OrgChartNodeState.belongsTo(db.OrganizationMember, {
 db.OrganizationMember.hasOne(db.OrgChartNodeState, {
   foreignKey: "organization_member_id",
   as: "nodeState",
+});
+
+// Approval associations
+db.Approval.hasMany(db.ApprovalComment, {
+  foreignKey: 'approval_id',
+  as: 'comments',
+  onDelete: 'CASCADE',
+});
+db.ApprovalComment.belongsTo(db.Approval, {
+  foreignKey: 'approval_id',
+});
+
+db.Approval.hasMany(db.ApprovalHistory, {
+  foreignKey: 'approval_id',
+  as: 'history',
+  onDelete: 'CASCADE',
+});
+db.ApprovalHistory.belongsTo(db.Approval, {
+  foreignKey: 'approval_id',
 });
 
 db.sequelize = sequelize;

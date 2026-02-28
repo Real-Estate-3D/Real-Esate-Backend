@@ -1,394 +1,206 @@
+const { Op } = require('sequelize');
+const { Approval, ApprovalComment, ApprovalHistory, sequelize } = require('../models');
 const asyncHandler = require('../middleware/asyncHandler');
 const { ApiError } = require('../middleware/errorHandler');
 
-const reviewersSeed = [
-  { id: 'rv-001', name: 'John Doe', role: 'City Official', email: 'john.doe@blueprint.gov' },
-  { id: 'rv-002', name: 'Jane Smith', role: 'Urban Planner', email: 'jane.smith@blueprint.gov' },
-  { id: 'rv-003', name: 'David Lee', role: 'GIS Specialist', email: 'david.lee@blueprint.gov' },
+// ─────────────────────────────────────────────────────────────────────────────
+// Misc helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
+const isValidEmail   = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+const getActorId   = (req) => req.user?.id   || null;
+const getActorName = (req) => req.user?.firstName || req.user?.name || 'System';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-memory reviewer store  (will move to DB in a later step)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let reviewers = [
+  { id: 'rv-001', name: 'John Doe',    role: 'City Official',   email: 'john.doe@blueprint.gov' },
+  { id: 'rv-002', name: 'Jane Smith',  role: 'Urban Planner',   email: 'jane.smith@blueprint.gov' },
+  { id: 'rv-003', name: 'David Lee',   role: 'GIS Specialist',  email: 'david.lee@blueprint.gov' },
   { id: 'rv-004', name: 'Sofia Davis', role: 'Policy Reviewer', email: 'sofia.davis@blueprint.gov' },
 ];
 
-const seedApprovals = [
-  {
-    id: 'app-001',
-    name: 'Zoning By-Law Amendment',
-    project: 'Downtown Revitalization',
-    applicant: 'SkyHigh Developments Inc.',
-    location: '123 Main Street',
-    description:
-      "You can't compress the program without quantifying the open-source SSL certificate.",
-    status: 'pending_review',
-    submittedDate: '2025-04-18',
-    assignedReviewer: null,
-  },
-  {
-    id: 'app-002',
-    name: 'Site Plan Approval',
-    project: 'Smart Park Initiative',
-    applicant: 'GreenField Realty',
-    location: '456 Oak Avenue',
-    description: 'Ensure all green spaces are maintained.',
-    status: 'pending_review',
-    submittedDate: '2025-04-20',
-    assignedReviewer: null,
-  },
-  {
-    id: 'app-003',
-    name: 'Building Permit',
-    project: 'Renewable Energy Project',
-    applicant: 'Urban Innovations',
-    location: '789 Elm Street',
-    description: 'Review structural integrity reports.',
-    status: 'approved',
-    submittedDate: '2025-04-14',
-    assignedReviewer: { id: 'rv-002', name: 'Jane Smith' },
-  },
-  {
-    id: 'app-004',
-    name: 'Subdivision Application',
-    project: 'Green Space Initiative',
-    applicant: 'NextGen Homes',
-    location: '321 Pine Lane',
-    description: 'Address traffic impact studies.',
-    status: 'revision_requested',
-    submittedDate: '2025-04-08',
-    assignedReviewer: { id: 'rv-003', name: 'David Lee' },
-  },
-  {
-    id: 'app-005',
-    name: 'Development Agreement',
-    project: 'Smart Transit Solutions',
-    applicant: 'Future Living Group',
-    location: '555 Birch Road',
-    description: 'Finalize utility layout plans.',
-    status: 'pending_review',
-    submittedDate: '2025-04-21',
-    assignedReviewer: null,
-  },
-  {
-    id: 'app-006',
-    name: 'Design Collaboration',
-    project: 'Historic Building Preservation',
-    applicant: 'Green Space Architects',
-    location: '45 Elm Avenue',
-    description: 'Draft initial design concepts.',
-    status: 'assigned',
-    submittedDate: '2025-04-13',
-    assignedReviewer: { id: 'rv-001', name: 'John Doe' },
-  },
-  {
-    id: 'app-007',
-    name: 'Construction Bid',
-    project: 'Waste Reduction Program',
-    applicant: 'BuildRight Contractors',
-    location: '78 Pine Street',
-    description: 'Review submitted bids.',
-    status: 'rejected',
-    submittedDate: '2025-04-03',
-    assignedReviewer: { id: 'rv-002', name: 'Jane Smith' },
-  },
-  {
-    id: 'app-008',
-    name: 'Environmental Impact Study',
-    project: 'Community Arts Festival',
-    applicant: 'EcoAnalyze Group',
-    location: '102 Maple Drive',
-    description: 'Compile impact assessment report.',
-    status: 'pending_review',
-    submittedDate: '2025-04-17',
-    assignedReviewer: null,
-  },
-  {
-    id: 'app-009',
-    name: 'Community Feedback Session',
-    project: 'Affordable Housing Development',
-    applicant: 'Local Council',
-    location: '202 Oak Boulevard',
-    description: 'Schedule public meeting.',
-    status: 'pending_review',
-    submittedDate: '2025-04-16',
-    assignedReviewer: null,
-  },
-  {
-    id: 'app-010',
-    name: 'Budget Approval',
-    project: 'Renewable Energy Project',
-    applicant: 'Finance Department',
-    location: '300 Cedar Lane',
-    description: 'Finalize budget allocation.',
-    status: 'pending_review',
-    submittedDate: '2025-04-09',
-    assignedReviewer: null,
-  },
+// ─────────────────────────────────────────────────────────────────────────────
+// Response formatters
+// DB stores snake_case; FE expects camelCase — transform here, not in the model
+// ─────────────────────────────────────────────────────────────────────────────
+
+const formatComment = (c) => {
+  const o = c.toJSON ? c.toJSON() : c;
+  return {
+    id:        o.id,
+    author:    o.author_name,
+    role:      o.author_role || 'Reviewer',
+    text:      o.text,
+    createdAt: o.created_at,
+  };
+};
+
+const formatHistory = (h) => {
+  const o = h.toJSON ? h.toJSON() : h;
+  return {
+    id:        o.id,
+    action:    o.action,
+    actorName: o.actor_name,
+    note:      o.note,
+    createdAt: o.created_at,
+  };
+};
+
+// Full approval shape — used by getById, create, and all action endpoints
+const formatApproval = (record) => {
+  const o = record.toJSON ? record.toJSON() : record;
+  return {
+    id:                    o.id,
+    name:                  o.name,
+    project:               o.project,
+    applicant:             o.applicant,
+    location:              o.location,
+    description:           o.description,
+    status:                o.status,
+    submittedDate:         o.submitted_date,
+    assignedReviewer:      o.assigned_reviewer,
+    zoningInfo:            o.zoning_info            || {},
+    legislationDetails:    o.legislation_details    || {},
+    sitePlan:              o.site_plan              || {},
+    legislativeCompliance: o.legislative_compliance || [],
+    requiredStudies:       o.required_studies       || [],
+    // DB column is workflow_steps; FE reads it as "workflow"
+    workflow:              o.workflow_steps          || [],
+    documents:             o.documents              || [],
+    comments:              (o.comments || []).map(formatComment),
+    history:               (o.history  || []).map(formatHistory),
+    createdAt:             o.created_at,
+    updatedAt:             o.updated_at,
+  };
+};
+
+// Slim list shape — used by getAll (no heavy JSONB blobs)
+const formatApprovalListItem = (record) => {
+  const o = record.toJSON ? record.toJSON() : record;
+  return {
+    id:               o.id,
+    name:             o.name,
+    project:          o.project,
+    applicant:        o.applicant,
+    location:         o.location,
+    description:      o.description,
+    status:           o.status,
+    submittedDate:    o.submitted_date,
+    assignedReviewer: o.assigned_reviewer,
+    updatedAt:        o.updated_at,
+  };
+};
+
+// Reload a full approval with associated comments + history (ordered)
+const loadFullApproval = (id) =>
+  Approval.findByPk(id, {
+    include: [
+      { model: ApprovalComment, as: 'comments', order: [['created_at', 'ASC']] },
+      { model: ApprovalHistory, as: 'history',  order: [['created_at', 'ASC']] },
+    ],
+  });
+
+// Columns fetched in list queries
+const LIST_ATTRIBUTES = [
+  'id', 'name', 'project', 'applicant', 'location',
+  'description', 'status', 'submitted_date', 'assigned_reviewer', 'updated_at',
 ];
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
-const nowIso = () => new Date().toISOString();
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const withDetails = (approval) => ({
-  ...approval,
-  zoningInfo: {
-    currentZoning: 'R2 - Residential',
-    proposedZoning: 'MU-Mixed Use',
-    landArea: '4.8 hectares',
-    officialPlanDesignation: 'Urban Growth Center',
-    specialProvisions: 'Oak Ridges Moraine Conservation Plan',
-    environmentalSensitivity: 'Medium',
-  },
-  legislationDetails: {
-    legislation: 'Environmental Impact Assessment',
-    label: 'Description',
-    originalLegislation:
-      'The contractor will not discriminate against employees or applicants for employment based on race, creed, color, national origin, sex, age, disability, or marital status.',
-    amendment:
-      'At the request of the contracting agency, the contractor shall request each employment agency or labor union to provide a written non-discrimination statement.',
-  },
-  sitePlan: {
-    title: 'Site Plan',
-    mapCenter: { lat: 43.6532, lng: -79.3832 },
-    municipalBoundaries: [
-      {
-        id: 'boundary-1',
-        name: 'Municipal Boundary',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [
-            [
-              [-79.395, 43.645],
-              [-79.355, 43.645],
-              [-79.355, 43.667],
-              [-79.395, 43.667],
-              [-79.395, 43.645],
-            ],
-          ],
-        },
-      },
-    ],
-    gisSchedulePolygons: [
-      {
-        id: 'schedule-green',
-        name: 'Compliant Zone',
-        color: '#24bf7a',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [
-            [
-              [-79.39, 43.65],
-              [-79.36, 43.65],
-              [-79.36, 43.664],
-              [-79.39, 43.664],
-              [-79.39, 43.65],
-            ],
-          ],
-        },
-      },
-      {
-        id: 'schedule-red',
-        name: 'Violation Zone',
-        color: '#d96b6b',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [
-            [
-              [-79.368, 43.646],
-              [-79.355, 43.646],
-              [-79.355, 43.656],
-              [-79.368, 43.656],
-              [-79.368, 43.646],
-            ],
-          ],
-        },
-      },
-    ],
-  },
-  legislativeCompliance: [
-    {
-      id: 'cmp-1',
-      law: 'Greenbelt Act',
-      requirement: '20m from water bodies',
-      status: 'violate',
-    },
-    {
-      id: 'cmp-2',
-      law: 'Municipal Bylaw',
-      requirement: 'Max 3 storeys',
-      status: 'complies',
-    },
-  ],
-  requiredStudies: [
-    {
-      id: 'study-1',
-      name: 'Traffic Impact Study',
-      owner: 'By: Jane Doe',
-      status: 'complete',
-    },
-    {
-      id: 'study-2',
-      name: 'Environmental Impact Study',
-      owner: 'Pending',
-      status: 'pending',
-    },
-  ],
-  workflow: [
-    {
-      id: 'wf-1',
-      title: 'Submission Received',
-      owner: 'By: System',
-      status: 'completed',
-      date: '18.04.2025',
-    },
-    {
-      id: 'wf-2',
-      title: 'Review by Planning Department',
-      owner: 'By: John Doe',
-      status: 'completed',
-      date: '19.04.2025',
-    },
-    {
-      id: 'wf-3',
-      title: 'Approved',
-      owner: 'By: Jane Smith',
-      status: 'completed',
-      date: '19.04.2025',
-    },
-    {
-      id: 'wf-4',
-      title: 'Consolidated',
-      owner: 'Pending',
-      status: 'pending',
-      date: '',
-    },
-  ],
-  documents: [
-    { id: 'doc-1', name: 'Cost Plan.pdf', size: '800 KB' },
-    { id: 'doc-2', name: 'Environment Assessment.pdf', size: '3 MB' },
-    { id: 'doc-3', name: 'Document.pdf', size: '3 MB' },
-  ],
-  comments: [
-    {
-      id: 'cm-1',
-      author: 'Sofia Davis',
-      role: 'City Official',
-      text: 'Use a long established fact that a reader will be distracted by the readable content of a page when looking at its layout.',
-      createdAt: '2025-10-04T12:40:00.000Z',
-    },
-  ],
-  history: [],
-  createdAt: approval.createdAt || nowIso(),
-  updatedAt: approval.updatedAt || nowIso(),
-});
-
-let approvals = seedApprovals.map(withDetails);
-let reviewers = clone(reviewersSeed);
-
-const findApproval = (id) => approvals.find((item) => item.id === id);
-
-const persistApproval = (updatedApproval) => {
-  approvals = approvals.map((item) =>
-    item.id === updatedApproval.id ? updatedApproval : item
-  );
-  return updatedApproval;
-};
-
-const filterApprovals = (items, query) => {
-  const search = (query.search || '').trim().toLowerCase();
-  const status = query.status || 'all';
-
-  return items.filter((item) => {
-    const matchesStatus = status === 'all' ? true : item.status === status;
-    if (!matchesStatus) return false;
-
-    if (!search) return true;
-    const haystack = `${item.name} ${item.project} ${item.applicant} ${item.location} ${item.description}`.toLowerCase();
-    return haystack.includes(search);
-  });
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/approvals/meta/reviewers
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.getReviewers = asyncHandler(async (req, res) => {
-  res.json({
-    success: true,
-    data: clone(reviewers),
-  });
+  res.json({ success: true, data: reviewers });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/approvals/meta/reviewers
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.createReviewer = asyncHandler(async (req, res) => {
-  const name = String(req.body?.name || '').trim();
-  const role = String(req.body?.role || 'City Official').trim() || 'City Official';
+  const name  = String(req.body?.name  || '').trim();
+  const role  = String(req.body?.role  || 'City Official').trim() || 'City Official';
   const email = normalizeEmail(req.body?.email);
 
-  if (!name || !email) {
-    throw new ApiError(400, 'name and email are required');
+  if (!name || !email)      throw new ApiError(400, 'name and email are required');
+  if (!isValidEmail(email)) throw new ApiError(400, 'A valid email is required');
+
+  if (reviewers.find((r) => normalizeEmail(r.email) === email)) {
+    throw new ApiError(409, 'A reviewer with this email already exists');
   }
 
-  if (!isValidEmail(email)) {
-    throw new ApiError(400, 'A valid email is required');
-  }
-
-  const existing = reviewers.find((item) => normalizeEmail(item.email) === email);
-  if (existing) {
-    throw new ApiError(409, 'Reviewer with this email already exists');
-  }
-
-  const reviewer = {
-    id: `rv-${Date.now()}`,
-    name,
-    role,
-    email,
-  };
-
+  const reviewer = { id: `rv-${Date.now()}`, name, role, email };
   reviewers = [reviewer, ...reviewers];
 
-  res.status(201).json({
-    success: true,
-    message: 'Reviewer added successfully',
-    data: reviewer,
-  });
+  res.status(201).json({ success: true, message: 'Reviewer added successfully', data: reviewer });
 });
 
-exports.getAll = asyncHandler(async (req, res) => {
-  const page = Math.max(parseInt(req.query.page || '1', 10), 1);
-  const limit = Math.max(parseInt(req.query.limit || '10', 10), 1);
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/approvals  — paginated list with search + status filter
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const filtered = filterApprovals(approvals, req.query);
-  const start = (page - 1) * limit;
-  const rows = filtered.slice(start, start + limit);
+exports.getAll = asyncHandler(async (req, res) => {
+  const page   = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit  = Math.max(parseInt(req.query.limit || '10', 10), 1);
+  const search = (req.query.search || '').trim();
+  const status = req.query.status || 'all';
+
+  const where = {};
+
+  if (status !== 'all') {
+    where.status = status;
+  }
+
+  if (search) {
+    where[Op.or] = [
+      { name:        { [Op.iLike]: `%${search}%` } },
+      { project:     { [Op.iLike]: `%${search}%` } },
+      { applicant:   { [Op.iLike]: `%${search}%` } },
+      { location:    { [Op.iLike]: `%${search}%` } },
+      { description: { [Op.iLike]: `%${search}%` } },
+    ];
+  }
+
+  const { count, rows } = await Approval.findAndCountAll({
+    where,
+    attributes: LIST_ATTRIBUTES,
+    order:  [['updated_at', 'DESC']],
+    limit,
+    offset: (page - 1) * limit,
+  });
 
   res.json({
     success: true,
-    data: rows.map((item) => ({
-      id: item.id,
-      name: item.name,
-      project: item.project,
-      applicant: item.applicant,
-      location: item.location,
-      description: item.description,
-      status: item.status,
-      submittedDate: item.submittedDate,
-      assignedReviewer: item.assignedReviewer,
-      updatedAt: item.updatedAt,
-    })),
+    data: rows.map(formatApprovalListItem),
     pagination: {
-      total: filtered.length,
+      total:      count,
       page,
       limit,
-      totalPages: Math.max(1, Math.ceil(filtered.length / limit)),
+      totalPages: Math.max(1, Math.ceil(count / limit)),
     },
   });
 });
 
-exports.getById = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/approvals/:id  — full detail with comments + history
+// ─────────────────────────────────────────────────────────────────────────────
 
-  res.json({
-    success: true,
-    data: approval,
-  });
+exports.getById = asyncHandler(async (req, res) => {
+  const approval = await loadFullApproval(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
+
+  res.json({ success: true, data: formatApproval(approval) });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/approvals  — create new approval
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.create = asyncHandler(async (req, res) => {
   const {
@@ -398,207 +210,234 @@ exports.create = asyncHandler(async (req, res) => {
     location,
     description,
     submittedDate,
+    zoningInfo,
+    requiredStudies,
+    documents,
   } = req.body;
 
-  if (!name || !project || !applicant) {
-    throw new ApiError(400, 'name, project, and applicant are required');
+  if (!name || !applicant) {
+    throw new ApiError(400, 'name and applicant are required');
   }
 
-  const created = withDetails({
-    id: `app-${Date.now()}`,
-    name,
-    project,
-    applicant,
-    location: location || 'N/A',
-    description: description || 'No description provided.',
-    status: 'pending_review',
-    submittedDate: submittedDate || nowIso().slice(0, 10),
-    assignedReviewer: null,
-    comments: [],
-    history: [
+  const created = await sequelize.transaction(async (t) => {
+    const approval = await Approval.create(
       {
-        id: `hist-${Date.now()}`,
-        action: 'created',
-        actor: req.user?.firstName || req.user?.name || 'System',
-        note: 'Approval created',
-        date: nowIso(),
+        name,
+        project:          project       || null,
+        applicant,
+        location:         location      || null,
+        description:      description   || null,
+        submitted_date:   submittedDate || new Date(),
+        status:           'pending_review',
+        zoning_info:      zoningInfo       || {},
+        required_studies: requiredStudies  || [],
+        documents:        documents        || [],
+        created_by:       getActorId(req),
+        updated_by:       getActorId(req),
       },
-    ],
+      { transaction: t }
+    );
+
+    await ApprovalHistory.create(
+      {
+        approval_id: approval.id,
+        action:      'created',
+        actor_id:    getActorId(req),
+        actor_name:  getActorName(req),
+        note:        'Approval submitted',
+      },
+      { transaction: t }
+    );
+
+    return approval.id;
   });
 
-  approvals = [created, ...approvals];
+  // Reload with associations so the response includes the history entry
+  const approval = await loadFullApproval(created);
 
   res.status(201).json({
     success: true,
     message: 'Approval created successfully',
-    data: created,
+    data:    formatApproval(approval),
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/approvals/:id/approve
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.approve = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
-  }
+  const approval = await Approval.findByPk(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
 
-  const updated = persistApproval({
-    ...approval,
-    status: 'approved',
-    updatedAt: nowIso(),
-    history: [
-      ...(approval.history || []),
+  await sequelize.transaction(async (t) => {
+    await approval.update(
+      { status: 'approved', updated_by: getActorId(req) },
+      { transaction: t }
+    );
+    await ApprovalHistory.create(
       {
-        id: `hist-${Date.now()}`,
-        action: 'approved',
-        actor: req.user?.firstName || req.user?.name || 'System',
-        note: req.body?.reason || 'Application approved',
-        date: nowIso(),
+        approval_id: approval.id,
+        action:      'approved',
+        actor_id:    getActorId(req),
+        actor_name:  getActorName(req),
+        note:        req.body?.reason || 'Application approved',
       },
-    ],
+      { transaction: t }
+    );
   });
 
-  res.json({
-    success: true,
-    message: 'Approval updated successfully',
-    data: updated,
-  });
+  const updated = await loadFullApproval(approval.id);
+  res.json({ success: true, message: 'Approval approved successfully', data: formatApproval(updated) });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/approvals/:id/reject
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.reject = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
+  const approval = await Approval.findByPk(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
+
+  if (!req.body?.reason?.trim()) {
+    throw new ApiError(400, 'reason is required to reject an approval');
   }
 
-  const updated = persistApproval({
-    ...approval,
-    status: 'rejected',
-    updatedAt: nowIso(),
-    history: [
-      ...(approval.history || []),
+  await sequelize.transaction(async (t) => {
+    await approval.update(
+      { status: 'rejected', updated_by: getActorId(req) },
+      { transaction: t }
+    );
+    await ApprovalHistory.create(
       {
-        id: `hist-${Date.now()}`,
-        action: 'rejected',
-        actor: req.user?.firstName || req.user?.name || 'System',
-        note: req.body?.reason || 'Application rejected',
-        date: nowIso(),
+        approval_id: approval.id,
+        action:      'rejected',
+        actor_id:    getActorId(req),
+        actor_name:  getActorName(req),
+        note:        req.body.reason,
       },
-    ],
+      { transaction: t }
+    );
   });
 
-  res.json({
-    success: true,
-    message: 'Approval rejected',
-    data: updated,
-  });
+  const updated = await loadFullApproval(approval.id);
+  res.json({ success: true, message: 'Approval rejected', data: formatApproval(updated) });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/approvals/:id/assign
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.assign = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
-  }
+  const approval = await Approval.findByPk(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
 
+  // Accept either a full reviewer object or just a reviewerId to look up
   const reviewer =
     req.body?.reviewer ||
-    reviewers.find((item) => item.id === req.body?.reviewerId) ||
+    reviewers.find((r) => r.id === req.body?.reviewerId) ||
     null;
 
-  if (!reviewer) {
-    throw new ApiError(400, 'reviewer or reviewerId is required');
-  }
+  if (!reviewer) throw new ApiError(400, 'reviewer or reviewerId is required');
 
-  const updated = persistApproval({
-    ...approval,
-    status: 'assigned',
-    assignedReviewer: reviewer,
-    updatedAt: nowIso(),
-    history: [
-      ...(approval.history || []),
+  await sequelize.transaction(async (t) => {
+    await approval.update(
       {
-        id: `hist-${Date.now()}`,
-        action: 'assigned',
-        actor: req.user?.firstName || req.user?.name || 'System',
-        note: `Assigned to ${reviewer.name}`,
-        date: nowIso(),
+        status:            'assigned',
+        assigned_reviewer: { id: reviewer.id, name: reviewer.name, role: reviewer.role, email: reviewer.email },
+        updated_by:        getActorId(req),
       },
-    ],
+      { transaction: t }
+    );
+    await ApprovalHistory.create(
+      {
+        approval_id: approval.id,
+        action:      'assigned',
+        actor_id:    getActorId(req),
+        actor_name:  getActorName(req),
+        note:        `Assigned to ${reviewer.name} (${reviewer.role || 'Reviewer'})`,
+      },
+      { transaction: t }
+    );
   });
 
-  res.json({
-    success: true,
-    message: 'Approval assigned successfully',
-    data: updated,
-  });
+  const updated = await loadFullApproval(approval.id);
+  res.json({ success: true, message: `Approval assigned to ${reviewer.name}`, data: formatApproval(updated) });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/approvals/:id/request-revision
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.requestRevision = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
+  const approval = await Approval.findByPk(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
+
+  if (!req.body?.reason?.trim()) {
+    throw new ApiError(400, 'reason is required to request a revision');
   }
 
-  const updated = persistApproval({
-    ...approval,
-    status: 'revision_requested',
-    updatedAt: nowIso(),
-    history: [
-      ...(approval.history || []),
+  const { reason, deadline, recipient } = req.body;
+
+  // Build a descriptive note from all the revision fields
+  let note = reason;
+  if (deadline) note += ` | Deadline: ${deadline}`;
+  if (recipient?.name) note += ` | Recipient: ${recipient.name}`;
+
+  await sequelize.transaction(async (t) => {
+    await approval.update(
+      { status: 'revision_requested', updated_by: getActorId(req) },
+      { transaction: t }
+    );
+    await ApprovalHistory.create(
       {
-        id: `hist-${Date.now()}`,
-        action: 'revision_requested',
-        actor: req.user?.firstName || req.user?.name || 'System',
-        note: req.body?.reason || 'Revision requested',
-        date: nowIso(),
+        approval_id: approval.id,
+        action:      'revision_requested',
+        actor_id:    getActorId(req),
+        actor_name:  getActorName(req),
+        note,
       },
-    ],
+      { transaction: t }
+    );
   });
 
-  res.json({
-    success: true,
-    message: 'Revision requested',
-    data: updated,
-  });
+  const updated = await loadFullApproval(approval.id);
+  res.json({ success: true, message: 'Revision requested', data: formatApproval(updated) });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/approvals/:id/comments
+// ─────────────────────────────────────────────────────────────────────────────
+
 exports.addComment = asyncHandler(async (req, res) => {
-  const approval = findApproval(req.params.id);
-  if (!approval) {
-    throw new ApiError(404, 'Approval not found');
-  }
+  const approval = await Approval.findByPk(req.params.id);
+  if (!approval) throw new ApiError(404, 'Approval not found');
 
   const text = req.body?.text?.trim();
-  if (!text) {
-    throw new ApiError(400, 'Comment text is required');
-  }
+  if (!text) throw new ApiError(400, 'Comment text is required');
 
-  const newComment = {
-    id: `cm-${Date.now()}`,
-    author:
-      req.body?.author ||
-      req.user?.display_name ||
-      req.user?.firstName ||
-      req.user?.name ||
-      'System',
-    role: req.body?.role || 'Reviewer',
+  // author/role can come from the request body (FE sends them directly)
+  // or fall back to the authenticated user
+  const authorName =
+    req.body?.author ||
+    req.user?.display_name ||
+    req.user?.firstName ||
+    req.user?.name ||
+    'System';
+
+  await ApprovalComment.create({
+    approval_id:  approval.id,
+    author_id:    getActorId(req),
+    author_name:  authorName,
+    author_role:  req.body?.role || 'Reviewer',
     text,
-    createdAt: nowIso(),
-  };
-
-  const updated = persistApproval({
-    ...approval,
-    comments: [...(approval.comments || []), newComment],
-    updatedAt: nowIso(),
   });
 
+  // Return the full approval so the FE drawer refreshes all comments at once
+  const updated = await loadFullApproval(approval.id);
   res.status(201).json({
     success: true,
     message: 'Comment added successfully',
-    data: updated,
+    data:    formatApproval(updated),
   });
 });
-
-exports._resetApprovals = () => {
-  approvals = clone(seedApprovals.map(withDetails));
-  reviewers = clone(reviewersSeed);
-};
