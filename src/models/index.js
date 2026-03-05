@@ -86,6 +86,11 @@ db.Approval = require("./approval/Approval")(sequelize);
 db.ApprovalComment = require("./approval/ApprovalComment")(sequelize);
 db.ApprovalHistory = require("./approval/ApprovalHistory")(sequelize);
 
+// Project models
+db.Project = require("./project/Project")(sequelize);
+db.ProjectComment = require("./project/ProjectComment")(sequelize);
+db.ProjectHistory = require("./project/ProjectHistory")(sequelize);
+
 // Define associations
 // Boundary Tier Types
 db.UpperTier.belongsTo(db.BoundaryTierType, { foreignKey: "tier_type_id" });
@@ -460,6 +465,21 @@ db.Approval.hasMany(db.ApprovalHistory, {
 db.ApprovalHistory.belongsTo(db.Approval, {
   foreignKey: 'approval_id',
 });
+
+// Project associations
+db.Project.hasMany(db.ProjectComment, {
+  foreignKey: 'project_id',
+  as: 'comments',
+  onDelete: 'CASCADE',
+});
+db.ProjectComment.belongsTo(db.Project, { foreignKey: 'project_id' });
+
+db.Project.hasMany(db.ProjectHistory, {
+  foreignKey: 'project_id',
+  as: 'history',
+  onDelete: 'CASCADE',
+});
+db.ProjectHistory.belongsTo(db.Project, { foreignKey: 'project_id' });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;
