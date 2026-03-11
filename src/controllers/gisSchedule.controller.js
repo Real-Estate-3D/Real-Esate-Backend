@@ -17,7 +17,7 @@ exports.getAll = asyncHandler(async (req, res) => {
     search,
     scheduleType,
     legislationId,
-    sortBy = 'display_order',
+    sortBy = 'created_at',
     sortOrder = 'ASC',
   } = req.query;
 
@@ -43,11 +43,11 @@ exports.getAll = asyncHandler(async (req, res) => {
       {
         model: Legislation,
         as: 'legislation',
-        attributes: ['id', 'title', 'number'],
+        attributes: ['id', 'title'],
       },
       {
         model: GISLayer,
-        as: 'gisLayer',
+        as: 'layer',
         attributes: ['id', 'name', 'layer_type'],
       },
     ],
@@ -77,7 +77,7 @@ exports.getById = asyncHandler(async (req, res) => {
       },
       {
         model: GISLayer,
-        as: 'gisLayer',
+        as: 'layer',
       },
     ],
   });
@@ -233,11 +233,11 @@ exports.uploadFile = asyncHandler(async (req, res) => {
 exports.getByLegislation = asyncHandler(async (req, res) => {
   const schedules = await GISSchedule.findAll({
     where: { legislation_id: req.params.legislationId },
-    order: [['display_order', 'ASC']],
+    order: [['created_at', 'ASC']],
     include: [
       {
         model: GISLayer,
-        as: 'gisLayer',
+        as: 'layer',
       },
     ],
   });

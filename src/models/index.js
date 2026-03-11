@@ -191,7 +191,7 @@ db.Legislation.hasMany(db.GISSchedule, {
   foreignKey: "legislation_id",
   as: "gisSchedules",
 });
-db.GISSchedule.belongsTo(db.Legislation, { foreignKey: "legislation_id" });
+db.GISSchedule.belongsTo(db.Legislation, { foreignKey: "legislation_id", as: "legislation" });
 
 db.GISSchedule.belongsTo(db.GISLayer, {
   foreignKey: "gis_layer_id",
@@ -217,6 +217,44 @@ db.Workflow.hasMany(db.WorkflowStep, {
   as: "steps",
 });
 db.WorkflowStep.belongsTo(db.Workflow, { foreignKey: "workflow_id" });
+
+// ZoningLaw → GISSchedule
+db.ZoningLaw.hasMany(db.GISSchedule, {
+  foreignKey: "zoning_law_id",
+  as: "gisSchedules",
+});
+db.GISSchedule.belongsTo(db.ZoningLaw, {
+  foreignKey: "zoning_law_id",
+  as: "zoningLaw",
+});
+
+// ChangeHistory associations
+db.ChangeHistory.belongsTo(db.Legislation, {
+  foreignKey: "legislation_id",
+  as: "legislation",
+});
+db.Legislation.hasMany(db.ChangeHistory, {
+  foreignKey: "legislation_id",
+  as: "changeHistory",
+});
+
+db.ChangeHistory.belongsTo(db.ZoningLaw, {
+  foreignKey: "zoning_law_id",
+  as: "zoningLaw",
+});
+db.ZoningLaw.hasMany(db.ChangeHistory, {
+  foreignKey: "zoning_law_id",
+  as: "changeHistory",
+});
+
+db.ChangeHistory.belongsTo(db.Policy, {
+  foreignKey: "policy_id",
+  as: "policy",
+});
+db.Policy.hasMany(db.ChangeHistory, {
+  foreignKey: "policy_id",
+  as: "changeHistory",
+});
 
 // User associations
 db.User.belongsToMany(db.Role, {

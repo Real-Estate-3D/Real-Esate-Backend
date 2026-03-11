@@ -9,6 +9,7 @@ const zoningLawRoutes = require("./zoningLaw.routes");
 const policyRoutes = require("./policy.routes");
 const changeHistoryRoutes = require("./changeHistory.routes");
 const branchRoutes = require("./branch.routes");
+const versionRoutes = require("./version.routes");
 // const gisLayerRoutes = require('./gisLayer.routes'); // TODO: Implement controller
 const gisScheduleRoutes = require("./gisSchedule.routes");
 const workflowRoutes = require("./workflow.routes");
@@ -35,6 +36,7 @@ router.use(`${API_PREFIX}/auth`, authRoutes);
 router.use(`${API_PREFIX}/users`, userRoutes);
 router.use(`${API_PREFIX}/legislations`, legislationRoutes);
 router.use(`${API_PREFIX}/legislations/:legislationId/branches`, branchRoutes);
+router.use(`${API_PREFIX}/legislations/:legislationId/versions`, versionRoutes);
 router.use(`${API_PREFIX}/zoning-laws`, zoningLawRoutes);
 router.use(`${API_PREFIX}/policies`, policyRoutes);
 router.use(`${API_PREFIX}/change-history`, changeHistoryRoutes);
