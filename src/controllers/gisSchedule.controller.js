@@ -1,271 +1,52 @@
 // File: src/controllers/gisSchedule.controller.js
-const { GISSchedule, Legislation, GISLayer } = require('../models');
-const asyncHandler = require('../middleware/asyncHandler');
-const { ApiError } = require('../middleware/errorHandler');
-const { Op } = require('sequelize');
-const path = require('path');
-const fs = require('fs').promises;
-const { extractGeometry, validateGeometryWithinJurisdiction } = require('../utils/jurisdictionValidation');
+// HTTP layer only; business logic lives in gisSchedule.service.js
+const gisScheduleService = require('../services/gisSchedule.service');
+const asyncHandler       = require('../middleware/asyncHandler');
 
-/**
- * Get all GIS schedules
- */
 exports.getAll = asyncHandler(async (req, res) => {
-  const {
-    page = 1,
-    limit = 10,
-    search,
-    scheduleType,
-    legislationId,
-    sortBy = 'created_at',
-    sortOrder = 'ASC',
-  } = req.query;
-
-  const offset = (page - 1) * limit;
-
-  // Build where clause
-  const where = {};
-  if (search) {
-    where[Op.or] = [
-      { name: { [Op.iLike]: `%${search}%` } },
-      { description: { [Op.iLike]: `%${search}%` } },
-    ];
-  }
-  if (scheduleType) where.schedule_type = scheduleType;
-  if (legislationId) where.legislation_id = legislationId;
-
-  const { count, rows } = await GISSchedule.findAndCountAll({
-    where,
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-    order: [[sortBy, sortOrder]],
-    include: [
-      {
-        model: Legislation,
-        as: 'legislation',
-        attributes: ['id', 'title'],
-      },
-      {
-        model: GISLayer,
-        as: 'layer',
-        attributes: ['id', 'name', 'layer_type'],
-      },
-    ],
-  });
-
-  res.json({
-    success: true,
-    data: rows,
-    pagination: {
-      total: count,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      totalPages: Math.ceil(count / limit),
-    },
-  });
+  const result = await gisScheduleService.getAll(req.query);
+  res.json({ success: true, ...result });
 });
 
-/**
- * Get GIS schedule by ID
- */
 exports.getById = asyncHandler(async (req, res) => {
-  const schedule = await GISSchedule.findByPk(req.params.id, {
-    include: [
-      {
-        model: Legislation,
-        as: 'legislation',
-      },
-      {
-        model: GISLayer,
-        as: 'layer',
-      },
-    ],
-  });
-
-  if (!schedule) {
-    throw new ApiError(404, 'GIS schedule not found');
-  }
-
-  res.json({
-    success: true,
-    data: schedule,
-  });
+  const data = await gisScheduleService.getById(req.params.id);
+  res.json({ success: true, data });
 });
 
-/**
- * Create new GIS schedule
- */
 exports.create = asyncHandler(async (req, res) => {
-  const normalizedGeometry = extractGeometry(req.body?.geometry);
-  if (normalizedGeometry) {
-    if (!req.user?.jurisdiction) {
-      throw new ApiError(422, 'User jurisdiction is required before saving polygon geometry');
-    }
-
-    const validation = await validateGeometryWithinJurisdiction({
-      geometry: normalizedGeometry,
-      jurisdictionName: req.user.jurisdiction,
-    });
-
-    if (!validation.valid) {
-      throw new ApiError(422, validation.reason || 'Polygon is outside assigned jurisdiction');
-    }
-  }
-
-  const scheduleData = {
-    ...req.body,
-    ...(normalizedGeometry ? { geometry: normalizedGeometry } : {}),
-    created_by: req.user.id,
-  };
-
-  const schedule = await GISSchedule.create(scheduleData);
-
-  res.status(201).json({
-    success: true,
-    message: 'GIS schedule created successfully',
-    data: schedule,
+  const data = await gisScheduleService.create(req.body, {
+    userId:          req.user?.id          || null,
+    userJurisdiction: req.user?.jurisdiction || null,
   });
+  res.status(201).json({ success: true, message: 'GIS schedule created successfully', data });
 });
 
-/**
- * Update GIS schedule
- */
 exports.update = asyncHandler(async (req, res) => {
-  const schedule = await GISSchedule.findByPk(req.params.id);
-
-  if (!schedule) {
-    throw new ApiError(404, 'GIS schedule not found');
-  }
-
-  const updates = { ...req.body };
-  const normalizedGeometry = extractGeometry(req.body?.geometry);
-  if (normalizedGeometry) {
-    if (!req.user?.jurisdiction) {
-      throw new ApiError(422, 'User jurisdiction is required before saving polygon geometry');
-    }
-
-    const validation = await validateGeometryWithinJurisdiction({
-      geometry: normalizedGeometry,
-      jurisdictionName: req.user.jurisdiction,
-    });
-
-    if (!validation.valid) {
-      throw new ApiError(422, validation.reason || 'Polygon is outside assigned jurisdiction');
-    }
-    updates.geometry = normalizedGeometry;
-  }
-
-  await schedule.update(updates);
-
-  res.json({
-    success: true,
-    message: 'GIS schedule updated successfully',
-    data: schedule,
+  const data = await gisScheduleService.update(req.params.id, req.body, {
+    userJurisdiction: req.user?.jurisdiction || null,
   });
+  res.json({ success: true, message: 'GIS schedule updated successfully', data });
 });
 
-/**
- * Delete GIS schedule
- */
 exports.delete = asyncHandler(async (req, res) => {
-  const schedule = await GISSchedule.findByPk(req.params.id);
-
-  if (!schedule) {
-    throw new ApiError(404, 'GIS schedule not found');
-  }
-
-  // Delete associated file if exists
-  if (schedule.file_path) {
-    try {
-      await fs.unlink(schedule.file_path);
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
-  }
-
-  await schedule.destroy();
-
-  res.json({
-    success: true,
-    message: 'GIS schedule deleted successfully',
-  });
+  await gisScheduleService.delete(req.params.id);
+  res.json({ success: true, message: 'GIS schedule deleted successfully' });
 });
 
-/**
- * Upload GIS file
- */
 exports.uploadFile = asyncHandler(async (req, res) => {
-  if (!req.file) {
-    throw new ApiError(400, 'No file uploaded');
-  }
-
-  const { legislationId, name, description, scheduleType } = req.body;
-
-  if (!legislationId || !name) {
-    // Clean up uploaded file
-    await fs.unlink(req.file.path);
-    throw new ApiError(400, 'Legislation ID and name are required');
-  }
-
-  const scheduleData = {
-    legislation_id: legislationId,
-    name,
-    description,
-    schedule_type: scheduleType || 'map_schedule',
-    file_path: req.file.path,
-    file_size: req.file.size,
-    file_type: path.extname(req.file.originalname),
-    created_by: req.user.id,
-  };
-
-  const schedule = await GISSchedule.create(scheduleData);
-
-  res.status(201).json({
-    success: true,
-    message: 'File uploaded successfully',
-    data: schedule,
-  });
+  const data = await gisScheduleService.uploadFile(
+    req.file,
+    req.body,
+    req.user?.id || null
+  );
+  res.status(201).json({ success: true, message: 'File uploaded successfully', data });
 });
 
-/**
- * Get schedules by legislation
- */
 exports.getByLegislation = asyncHandler(async (req, res) => {
-  const schedules = await GISSchedule.findAll({
-    where: { legislation_id: req.params.legislationId },
-    order: [['created_at', 'ASC']],
-    include: [
-      {
-        model: GISLayer,
-        as: 'layer',
-      },
-    ],
-  });
-
-  res.json({
-    success: true,
-    data: schedules,
-  });
+  const data = await gisScheduleService.getByLegislation(req.params.legislationId);
+  res.json({ success: true, data });
 });
 
-/**
- * Get schedule types
- */
 exports.getScheduleTypes = asyncHandler(async (req, res) => {
-  const types = [
-    { value: 'map_schedule', label: 'Map Schedule' },
-    { value: 'zoning_schedule', label: 'Zoning Schedule' },
-    { value: 'land_use', label: 'Land Use' },
-    { value: 'height_density', label: 'Height & Density' },
-    { value: 'parking', label: 'Parking' },
-    { value: 'environmental', label: 'Environmental' },
-    { value: 'heritage', label: 'Heritage' },
-    { value: 'urban_design', label: 'Urban Design' },
-    { value: 'other', label: 'Other' },
-  ];
-
-  res.json({
-    success: true,
-    data: types,
-  });
+  res.json({ success: true, data: gisScheduleService.getScheduleTypes() });
 });
